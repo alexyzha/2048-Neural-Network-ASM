@@ -1,5 +1,6 @@
 .DS_Store
 obj
 *.o
+*.ipynb
 .vscode
 .ipynb_checkpoints
