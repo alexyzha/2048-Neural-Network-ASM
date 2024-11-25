@@ -1,37 +1,30 @@
 section .data
-; FILE
-    BOTFILE     db      'dat/bot.txt', 0
+    BOTFILE     db      'dat/bot.txt', 0            ; subsection: file names + permissions
     OUTFILE     db      'dat/outfile.txt', 0
     INFILE      db      'dat/infile.txt', 0
     STATFL      db      'dat/stats.txt', 0
-    FILE_RD     db      'r', 0
+    FILE_RD     db      'r', 0                      ; perms for fopen
     FILE_WR     db      'w', 0
-
-; PRINT
+    SPC_PRNT    db      0x20, 0                     ; subsection: all print format strings
+    NLN_PRNT    db      0xA, 0
     LINEDIV     db      '#=====================#', 0xA, 0
     MS_PRNT     db      'Max score:', 0x20, '%d', 0xA, 0
     MT_PRNT     db      'Max tile:', 0x20, '%d', 0xA, 0
     AS_PRNT     db      'Average score:', 0x20, '%f', 0xA, 0
     WR_PRNT     db      'Winrate:', 0x20, '%f', 0xA, 0
-    SPC_PRNT    db      0x20, 0
-    NLN_PRNT    db      0xA, 0
     STR_PERC    db      '%s', 0xA, 0
     INT_PERC    db      '%d', 0xA, 0
     INT_PNNL    db      '%d', 0
     INT_SPC     db      '%d', 0x20, 0
     FLT_PERC    db      '%f', 0xA, 0
-    DBL_PERC    db      '%lf', 0xA, 0   ; scan for double is diff from print float/dbl
-
-; DIRS
-    DIR         dd      4, -1, -4, 1
+    DBL_PERC    db      '%lf', 0xA, 0               ; (f)scan for double requires lf
+    DIR         dd      4, -1, -4, 1                ; subsection: directions for sim_move subroutine
     UP          dd      0, 1, 2, 3
     RIGHT       dd      3, 7, 11, 15
     DOWN        dd      12, 13, 14, 15
     LEFT        dd      0, 4, 8, 12
     BASE        dq      UP, RIGHT, DOWN, LEFT
-
-; BOT BASE + CONSTS
-    MAX_P2      equ     15
+    MAX_P2      equ     15                          ; subsection: bot bases + other constants
     NUM_TPL     equ     17
     ALPHA       equ     25
     ADIV        equ     1000
@@ -40,8 +33,8 @@ section .data
     BOUND2      equ     999
     BOUND3      equ     99
     BOUND4      equ     9
-    MASK_ON     equ     0x40000000      ; mask moved down 1 bit
-    MASK_OFF    equ     0x3fffffff
+    MASK_ON     equ     0x40000000                  ; masks for/against second most significant bit (dword)
+    MASK_OFF    equ     0x3fffffff                  ; used for tile conbine and win counter
     DO_TRAIN    equ     0
     DO_TEST     equ     1
     SAVE_TPL    equ     0
@@ -49,11 +42,11 @@ section .data
 section .bss
     tuple       resq    17
     config      resq    17
-    board       resd    16              ; game board (shared with bot)
-    bot_ast     resd    16              ; bot afterstate
-    gam_ast     resd    16              ; game afterstate
-    templn      resd    4               ; vector subsitute
-    fileh       resq    1
+    board       resd    16                          ; game board (shared with bot)
+    bot_ast     resd    16                          ; bot afterstate
+    gam_ast     resd    16                          ; game afterstate
+    templn      resd    4                           ; vector subsitute (used in sim_move)
+    fileh       resq    1                           ; file handle storage
 
 section .text
     global _start
@@ -69,49 +62,49 @@ section .text
     extern srand
 
 _start:
-    finit                               ; we love floats
-    mov rax, 0xb000b1e5                 ; seed
+    finit                                           ; need fpu a lot
+    mov rax, 0xb000b1e5                             ; train seed
     call srand
-    mov rdi, tuple                      ; init tuple
+    mov rdi, tuple                                  ; alloc mem for tuples
     call init_tuples
-    mov rdi, INFILE                     ; init tpl config
+    mov rdi, INFILE                                 ; alloc mem for config + read configs from file
     mov rsi, config
     call init_config
-    mov rdi, board                      ; zero actual and ast boards
+    mov rdi, board                                  ; zero actual and ast boards
     call zero_board
     mov rdi, bot_ast
     call zero_board
     mov rdi, gam_ast
     call zero_board
-    mov rax, DO_TRAIN                   ; skip train
+    mov rax, DO_TRAIN                               ; skip train by param
     test rax, rax
     jz no_train
-    mov rdi, STATFL                     ; file handle for stat file
+    mov rdi, STATFL                                 ; file handle for stat file
     mov rsi, FILE_WR
     call fopen
     mov qword [fileh], rax
-    xor rbx, rbx                        ; sum score
-    xor r13, r13                        ; winrate
+    xor rbx, rbx                                    ; sum score
+    xor r13, r13                                    ; winrate
     mov r12, 500000
     train_loop:
-        mov rdi, INT_PERC               ; print iters left
+        mov rdi, INT_PERC                           ; print iters left
         mov rsi, r12
         call printf
         call run_game
-        test rax, MASK_ON               ; get win or no win from mask
+        test rax, MASK_ON                           ; get win/no win from mask
         jz no_win
         inc r13
         and rax, MASK_OFF
         no_win:
-            add rbx, rax
+        add rbx, rax
         dec r12
         mov rax, r12
         mov rcx, 500
         xor rdx, rdx
         div rcx
-        test rdx, rdx
+        test rdx, rdx                               ; split = 500 games
         jnz no_save
-        mov rdi, qword [fileh]          ; save stats
+        mov rdi, qword [fileh]                      ; save stats
         mov rsi, INT_PERC
         mov rdx, rbx
         call fprintf
@@ -124,23 +117,23 @@ _start:
         no_save:
         test r12, r12
         jnz train_loop
-    mov rdi, qword [fileh]              ; clean file
+    mov rdi, qword [fileh]                          ; close file
     call fclose
     mov qword [fileh], 0
     no_train:
-    mov rax, DO_TEST
+    mov rax, DO_TEST                                ; test by param
     test rax, rax
     jz no_test
-    mov rdi, BOTFILE
+    mov rdi, BOTFILE                                ; load in weights
     call load_tuples
     test rax, rax
-    jz no_test
-    mov rax, 0x1e37b00b
+    jz no_test                                      ; no test if invalid bot file
+    mov rax, 0x1e37b00b                             ; set seed for test
     call srand
-    xor rbx, rbx                        ; max score
-    xor r13, r13                        ; winrate
-    xor r14, r14                        ; max tile
-    xor r15, r15                        ; average score
+    xor rbx, rbx                                    ; max score
+    xor r13, r13                                    ; winrate
+    xor r14, r14                                    ; max tile
+    xor r15, r15                                    ; average score
     mov r12, 50000
     test_loop:
         xor rdi, rdi
@@ -150,12 +143,12 @@ _start:
         inc r13
         and rax, MASK_OFF
         test_no_win:
-        add r15, rax                    ; add to total score, 64 bit not 2b
+        add r15, rax                                ; add to total score, 64 bit > 2bil
         xor rcx, rcx
         cmp rbx, rax
         jge test_loop_enum_tiles
         mov rbx, rax
-        test_loop_enum_tiles:
+        test_loop_enum_tiles:                       ; compare max tile to board tiles
             cmp r14d, dword [board+(rcx*4)]
             jge test_loop_enum_tiles_noupdate
             mov r14d, dword [board+(rcx*4)]
@@ -163,20 +156,20 @@ _start:
             inc rcx
             cmp rcx, 16
             jne test_loop_enum_tiles
-        mov rdi, INT_PERC
+        mov rdi, INT_PERC                           ; print test iters left
         mov rsi, r12
         call printf
         dec r12
         test r12, r12
         jnz test_loop
     call print_line
-    mov rdi, MS_PRNT                    ; print max score
+    mov rdi, MS_PRNT                                ; print max score
     mov rsi, rbx
     call printf
-    mov rdi, MT_PRNT                    ; print max tile
+    mov rdi, MT_PRNT                                ; print max tile
     mov rsi, r14
     call printf
-    sub rsp, 16                         ; print average score
+    sub rsp, 16                                     ; print average score
     mov qword [rsp], r15
     fild qword [rsp]
     mov dword [rsp], 50000
@@ -187,7 +180,7 @@ _start:
     mov rdi, AS_PRNT
     mov rax, 1
     call printf
-    mov qword [rsp], r13                ; print winrate
+    mov qword [rsp], r13                            ; print winrate
     fild qword [rsp]
     mov dword [rsp], 50000
     fild dword [rsp]
@@ -200,29 +193,36 @@ _start:
     call printf
     call print_line
     no_test:
-    mov rax, SAVE_TPL                   ; save tuple by param
+    mov rax, SAVE_TPL                               ; save tuple by param
     test rax, rax
     jz no_save_tpl
-    mov rdi, OUTFILE                    ; save tuple
+    mov rdi, OUTFILE                                ; save tuple
     call save_tuples
     no_save_tpl:
-    mov rdi, tuple                      ; clean tuple
+    mov rdi, tuple                                  ; clean tuple
     call delete_tuples
-    mov rdi, config                     ; clean tpl config
+    mov rdi, config                                 ; clean tpl config
     call delete_config
     mov rax, 60
     xor rdi, rdi
     syscall
 
 print_line:
-    sub rsp, 8
+    ;
+    ; prints a divider line
+    ; 
+    sub rsp, 8                                      ; align stack
     mov rdi, LINEDIV
     call printf
     add rsp, 8
     ret
 
 init_tuples:
-    ; rdi = tpl
+    ;
+    ; initializes tuples (0.0 base value)
+    ; rdi = tuples
+    ; returns void
+    ; 
     push rbx
     mov rbx, NUM_TPL
     init_tpl_loop:
@@ -230,12 +230,12 @@ init_tuples:
         push rdi
         mov rdi, MAX_P2
         imul rdi, rdi
-        imul rdi, rdi                   ; rdi^4
-        shl rdi, 3                      ; rdi^4 * 8
+        imul rdi, rdi                               ; rdi^4, i switched to a constant in later functions
+        shl rdi, 3                                  ; rdi^4 * 8
         call malloc
         mov rdi, qword [rsp]
         mov qword [rdi+(rbx*8)], rax
-        mov rdi, rax                    ; memset(a,0,sizeof(a))
+        mov rdi, rax                                ; memset(a,0,sizeof(a))
         mov rsi, 0
         mov rdx, MAX_P2
         imul rdx, rdx
@@ -249,14 +249,18 @@ init_tuples:
     ret
 
 delete_tuples:
-    ; rdi = tpl
+    ; 
+    ; deallocates tuple memory
+    ; rdi = tuples
+    ; returns void
+    ; 
     push rbx
     mov rbx, NUM_TPL
     delete_tpl_loop:
         dec rbx
         push rdi
         mov rdi, qword [rdi+(rbx)*8]
-        call free
+        call free                                   ; free mem
         pop rdi
         test rbx, rbx
         jnz delete_tpl_loop
@@ -264,7 +268,12 @@ delete_tuples:
     ret
 
 init_config:
-    ; rdi = infile, rsi = config
+    ; 
+    ; initializes all tuple configs from a file
+    ; rdi = infile
+    ; rsi = config
+    ; returns void
+    ; 
     push rsi
     mov rsi, FILE_RD
     call fopen
@@ -281,9 +290,9 @@ init_config:
         dec rbx
         mov rdi, 32
         call malloc
-        mov qword [r13+(rbx*8)], rax ; make cfg arr
+        mov qword [r13+(rbx*8)], rax                ; alloc config array
         mov r12, 0
-        cfg_tpl_loop:
+        cfg_tpl_loop:                               ; read from config file
             mov rdi, qword [fileh]
             mov rsi, INT_SPC
             mov rdx, qword [r13+(rbx*8)]
@@ -292,14 +301,14 @@ init_config:
             inc r12
             cmp r12, 3
             jne cfg_tpl_loop
-        mov rdi, qword [fileh]
+        mov rdi, qword [fileh]                      ; this was swiched to just 1 loop in later functions
         mov rsi, INT_PERC
         mov rdx, qword [r13+(rbx*8)]
         lea rdx, qword [rdx+(r12*8)]
         call fscanf        
         test rbx, rbx
         jnz init_cfg_loop
-    mov rdi, qword [fileh]              ; close file
+    mov rdi, qword [fileh]                          ; close file
     call fclose
     mov qword [fileh], 0
     pop r13
@@ -309,7 +318,11 @@ init_config:
         ret
 
 print_config:
+    ;
+    ; debug print config
     ; rdi = config
+    ; returns void
+    ; 
     push rbx
     push r12
     mov rbx, NUM_TPL
@@ -339,7 +352,11 @@ print_config:
     ret
 
 delete_config:
-    ; rdi = cfg
+    ; 
+    ; deallocates config memory
+    ; rdi = config
+    ; returns void
+    ; 
     push rbx
     mov rbx, NUM_TPL
     delete_cfg_loop:
@@ -357,8 +374,13 @@ delete_config:
     ret
 
 save_tuples:
+    ; 
+    ; saves tuple weights to a file
+    ; format = <config>, {all weights \n}
     ; rdi = filename
-    push rbx
+    ; returns void
+    ;
+    push rbx                                        ; align stack to 16
     push r12
     push r13
     mov rsi, FILE_WR
@@ -370,25 +392,25 @@ save_tuples:
     save_tuple_enum:
         xor r12, r12
         mov r13, qword [config+(rbx*8)]
-        save_tuple_enum_config:         ; save config all in 1 line
+        save_tuple_enum_config:                     ; save config all in 1 line
             mov rdi, qword [fileh]
             mov rsi, INT_SPC
             cmp r12, 3
             jne save_tuple_enum_config_nonl
             mov rsi, INT_PERC
             save_tuple_enum_config_nonl:
-            mov rdx, qword [r13+(r12*8)]    ; config array of qword
+            mov rdx, qword [r13+(r12*8)]            ; config array of qword
             call fprintf
             inc r12
             cmp r12, 4
             jne save_tuple_enum_config
         xor r12, r12
-        mov r13, qword [tuple+(rbx*8)]  ; double = qword
+        mov r13, qword [tuple+(rbx*8)]              ; double = qword
         save_tuple_enum_weight:
             mov rdi, qword [fileh]
             mov rsi, FLT_PERC
             movsd xmm0, qword [r13+(r12*8)]
-            mov rax, 1                  ; al = xmm use count
+            mov rax, 1                              ; al = xmm use count
             call fprintf
             inc r12
             cmp r12, TPL_MAX
@@ -396,7 +418,7 @@ save_tuples:
         inc rbx
         cmp rbx, NUM_TPL
         jne save_tuple_enum
-    mov rdi, qword [fileh]              ; del file handle
+    mov rdi, qword [fileh]                          ; del file handle
     call fclose
     mov qword [fileh], 0
     save_tuples_done:
@@ -406,8 +428,11 @@ save_tuples:
         ret
 
 load_tuples:
+    ; 
+    ; load tuples from file (same format as saved)
     ; rdi = filename
-    ; return 1 = load, 0 = no load 
+    ; return 1 = load, 0 = couldn't load
+    ; 
     push rbx
     push r12
     push r13
@@ -417,10 +442,10 @@ load_tuples:
     jz load_tuples_done
     mov qword [fileh], rax
     xor rbx, rbx
-    load_tuple_enum:
+    load_tuple_enum:                                ; iterate all tuples
         xor r12, r12
         mov r13, qword [config+(rbx*8)]
-        load_tuple_enum_config:
+        load_tuple_enum_config:                     ; get config
             mov rdi, qword [fileh]
             mov rsi, INT_SPC
             cmp r12, 3
@@ -434,7 +459,7 @@ load_tuples:
             jne load_tuple_enum_config
         xor r12, r12
         mov r13, qword [tuple+(rbx*8)]
-        load_tuple_enum_weight:
+        load_tuple_enum_weight:                     ; get weights
             mov rdi, qword [fileh]
             mov rsi, DBL_PERC
             lea rdx, qword [r13+(r12*8)]
@@ -456,8 +481,13 @@ load_tuples:
         ret
 
 print_board:
+    ; 
+    ; prints a board (can be ast)
+    ; setw(5)
     ; rdi = board
-    sub rsp, 8                          ; piss ass windows
+    ; returns void
+    ; 
+    sub rsp, 8                                      ; align stack
     push rbx
     push r12
     xor rbx, rbx
@@ -466,7 +496,7 @@ print_board:
     call printf
     mov rdi, r12
     print_all:
-        sub rsp, 8                      ; who doesn't love stack alignment
+        sub rsp, 8                                  ; align stack again
         push rdi
         mov r12d, dword [rdi+(rbx*4)]
         cmp r12d, BOUND4
@@ -492,13 +522,13 @@ print_board:
             mov rdi, INT_PNNL
             mov esi, r12d
             call printf
-        mov rax, rbx                    ; check if end of row
+        mov rax, rbx                                ; check if end of row
         inc rax
         mov rcx, 4
         xor rdx, rdx
         div rcx
         test rdx, rdx
-        jnz same_row                    ; i%4 != 0
+        jnz same_row                                ; i%4 != 0
         mov rdi, NLN_PRNT
         call printf
         same_row:
@@ -515,7 +545,11 @@ print_board:
     ret
 
 copy_board:
+    ;
+    ; copy to dst from src (must both be boards)
     ; rdi = src, rsi = dst
+    ; returns void
+    ; 
     xor rcx, rcx
     copy_board_loop:
         mov edx, dword [rdi+(rcx*4)]
@@ -526,16 +560,24 @@ copy_board:
     ret
 
 zero_board:
+    ; 
+    ; zeros all values for a board
     ; rdi = board
-    sub rsp, 8                          ; align stack bc memset is a little shit
+    ; returns void
+    ; 
+    sub rsp, 8                                      ; align stack bc memset is a little shit
     xor rsi, rsi
-    mov rdx, 64                         ; 16 dwords = 16*4 = 64
+    mov rdx, 64                                     ; 16 dwords = 16*4 = 64
     call memset
     add rsp, 8
     ret
 
 board_equal:
-    ; rdi = 1, rsi = 2
+    ; 
+    ; checks if boards are equal
+    ; rdi = board 1, rsi = board 2
+    ; returns bool
+    ; 
     xor rcx, rcx
     xor rax, rax
     board_equal_loop:
@@ -550,14 +592,17 @@ board_equal:
         ret
 
 v_ofstate:
+    ; 
+    ; gets value for a state (board/ast)
     ; rdi = board, rsi = delta? 1/0
     ; xmm0 = delta
     ; returns xmm0 = avg v score from all tpl
+    ;
     push rbx
     sub rsp, 8
-    mov rbx, ALPHA                      ; wah wah cant load from register
-    mov qword [rsp], rbx                ; wah wah i need to load from memoy
-    fild qword [rsp]                    ; wah wah
+    mov rbx, ALPHA                                  ; wah wah cant load from register
+    mov qword [rsp], rbx                            ; wah wah i need to load from memoy
+    fild qword [rsp]                                ; wah wah
     mov rbx, ADIV
     mov qword [rsp], rbx
     fild qword [rsp]
@@ -565,35 +610,35 @@ v_ofstate:
     fstp qword [rsp]
     movsd xmm2, qword [rsp]
     mulsd xmm0, xmm2
-    add rsp, 8                          ; if it works it works ig
-    movsd xmm1, xmm0                    ; xmm1 = delta*alpha 
-    pxor xmm0, xmm0                     ; accumulator
+    add rsp, 8
+    movsd xmm1, xmm0                                ; xmm1 = delta*alpha 
+    pxor xmm0, xmm0                                 ; accumulator
     mov rcx, NUM_TPL
     v_tuples:
         dec rcx
-        mov rdx, 4                      ; get key(state,tpl)
+        mov rdx, 4                                  ; get key(state,tpl)
         xor rax, rax
-        mov r8, qword [config+(rcx*8)]  ; p->cfg[i]
+        mov r8, qword [config+(rcx*8)]              ; p->cfg[i]
         v_keygen:
             dec rdx
-            mov rbx, qword [r8+(rdx*8)] ; config num
-            mov ebx, dword [rdi+(rbx*4)]; get board val
+            mov rbx, qword [r8+(rdx*8)]             ; config num
+            mov ebx, dword [rdi+(rbx*4)]            ; get board val
             test rbx, rbx
             jz key_done
-            bsr rbx, rbx                ; log2
-            key_done:                   ; rbx = log2(board[config[i][j]])
+            bsr rbx, rbx                            ; log2
+            key_done:                               ; rbx = log2(board[config[i][j]])
             imul rax, rax, 15
             add rax, rbx
             test rdx, rdx
             jnz v_keygen
         mov r8, qword [tuple+(rcx*8)]
-        test rsi, rsi                   ; + 0.0 == skip, may del
+        test rsi, rsi                               ; + 0.0 == skip, may del
         jz no_update
         movsd xmm2, qword [r8+(rax*8)]
         addsd xmm2, xmm1
         movsd qword [r8+(rax*8)], xmm2
         no_update:
-        addsd xmm0, qword [r8+(rax*8)]  ; += tuple[i][key]
+        addsd xmm0, qword [r8+(rax*8)]              ; += tuple[i][key]
         test rcx, rcx
         jnz v_tuples
     sub rsp, 8
@@ -603,20 +648,23 @@ v_ofstate:
     fstp qword [rsp]
     movsd xmm1, qword [rsp]
     add rsp, 8
-    divsd xmm0, xmm1                    ; average
+    divsd xmm0, xmm1                                ; average
     pop rbx
     ret
 
 sim_move:
+    ; 
+    ; simulates a move of board in direction dir
+    ; sim_move = game_move, set dest to board
     ; rdi = dest, rsi = dir
     ; return rax = score
-    ; sim_move = game_move, set dest to board
+    ; 
     push rbx
     push r12
     xor rax, rax
     xor rbx, rbx
     sim_move_outer:
-        push rdi                        ; this sucks
+        push rdi                                    ; stack align
         push rsi
         push rax
         mov rdi, templn
@@ -626,48 +674,48 @@ sim_move:
         pop rax
         pop rsi
         pop rdi
-        xor r8, r8                      ; vec back
+        xor r8, r8                                  ; vector back
         xor r12, r12
         sim_move_inner:
-            mov rcx, qword [BASE+(rsi*8)]       ; base[action]
-            mov ecx, dword [rcx+(rbx*4)]        ; base[action][i]
-            mov edx, dword [DIR+(rsi*4)]        ; dir[action]
-            imul edx, r12d                      ; j*dir[action]
-            add ecx, edx                        ; corr cur ind in line
-            mov edx, dword [board+(rcx*4)]      ; edx = board[index]
+            mov rcx, qword [BASE+(rsi*8)]           ; base[action]
+            mov ecx, dword [rcx+(rbx*4)]            ; base[action][i]
+            mov edx, dword [DIR+(rsi*4)]            ; dir[action]
+            imul edx, r12d                          ; j*dir[action]
+            add ecx, edx                            ; corr cur ind in line
+            mov edx, dword [board+(rcx*4)]          ; edx = board[index]
             test edx, edx
             jz sim_move_inner_next
-            test r8, r8                         ; nothing to combine
+            test r8, r8                             ; nothing to combine
             jz sim_move_pb_normal
             dec r8
             mov r9d, dword [templn+(r8*4)]
             inc r8
-            cmp r9d, edx                        ; combine if eq 
+            cmp r9d, edx                            ; combine if eq 
             jne sim_move_pb_normal
             dec r8
-            shl edx, 1                          ; merge tile
-            add eax, edx                        ; add score
-            or edx, MASK_ON                     ; mask 0x80...
+            shl edx, 1                              ; merge tile
+            add eax, edx                            ; add score
+            or edx, MASK_ON                         ; mask 0x80...
             sim_move_pb_normal:
                 mov dword [templn+(r8*4)], edx
                 inc r8
-            sim_move_inner_next:                ; next row/col
+            sim_move_inner_next:                    ; next row/col
                 inc r12
                 cmp r12, 4
                 jne sim_move_inner
         xor r12, r12
         sim_move_inner_pln:
             mov rcx, qword [BASE+(rsi*8)]
-            mov ecx, dword [rcx+(rbx*4)]        ; base[action][i]
+            mov ecx, dword [rcx+(rbx*4)]            ; base[action][i]
             mov edx, dword [DIR+(rsi*4)]
             imul edx, r12d
-            add ecx, edx                        ; ecx = index
+            add ecx, edx                            ; ecx = index
             mov dword [rdi+(rcx*4)], 0
             cmp r12, r8
             jge sim_move_inner_pln_done
-            mov edx, dword [templn+(r12*4)]     ; edx = line[j]
+            mov edx, dword [templn+(r12*4)]         ; edx = line[j]
             and edx, MASK_OFF
-            mov dword [rdi+(rcx*4)], edx        ; afterstate[index] = line[j] if j < line.size()
+            mov dword [rdi+(rcx*4)], edx            ; afterstate[index] = line[j] if j < line.size()
             sim_move_inner_pln_done:
                 inc r12
                 cmp r12, 4
@@ -680,15 +728,18 @@ sim_move:
     ret
 
 evaluate:
-    ; rdi = state, rsi = action
+    ; 
+    ; gets total score from an action
     ; sim_move preserves rdi/rsi
+    ; rdi = state, rsi = action
     ; return eval val in xmm0
-    push rdi                            ; need stack align + also for sim move
-    mov rdi, bot_ast                    ; rsi = action
+    ; 
+    push rdi                                        ; need stack align + also for sim move
+    mov rdi, bot_ast                                ; rsi = action
     call sim_move
-    pop rsi                             ; rsi = board, rdi = bot_ast
+    pop rsi                                         ; rsi = board, rdi = bot_ast
     mov r8, rax
-    sub rsp, 8                          ; i cant wait for the day where i learn a better alternative to whatever tf this is
+    sub rsp, 8                                      ; i cant wait for the day where i learn a better alternative to whatever tf this is
     mov rcx, -2
     mov qword [rsp], rcx
     fild qword [rsp]
@@ -697,31 +748,35 @@ evaluate:
     add rsp, 8
     call board_equal
     test rax, rax
-    jnz evaluate_done                    ; no move = illegal
+    jnz evaluate_done                               ; no move = illegal
     sub rsp, 8
-    mov qword [rsp], r8                 ; r8 = sim_move score
+    mov qword [rsp], r8                             ; r8 = sim_move score
     fild qword [rsp]
     fstp qword [rsp]
-    xor rsi, rsi                        ; rdi = bot_ast, rsi = 0 (no train)
+    xor rsi, rsi                                    ; rdi = bot_ast, rsi = 0 (no train)
     call v_ofstate
     movsd xmm1, qword [rsp]
     add rsp, 8
-    addsd xmm0, xmm1                    ; return xmm0
+    addsd xmm0, xmm1                                ; return xmm0
     evaluate_done:
         ret
 
 choose_action:
+    ; 
+    ; choose optimal action (or -1) from state
     ; rdi = state
+    ; returns 0-3 if valid, -1 if terminal state
+    ; 
     push rbx
     push r12
     mov r12, rdi
     xor rbx, rbx
-    sub rsp, 24                         ; +[action][best score]- both qword
+    sub rsp, 24                                     ; stack: +[action][best score]- both qword
     mov rax, -1
     mov qword [rsp+8], rax
     mov qword [rsp], rax
     fild qword [rsp]
-    fstp qword [rsp]                    ; -40 stack -8 fxn = aligned
+    fstp qword [rsp]                                ; -40 stack -8 fxn = aligned
     choose_action_enum:
         mov rdi, r12
         mov rsi, rbx
@@ -741,24 +796,28 @@ choose_action:
     ret
 
 learn:
+    ; 
+    ; updates weights
     ; in GAME LOOP:
     ; game generates afterstate in gam_ast
     ; copy gam_ast -> board
     ; make next state with board (+tile)
     ; ast = gam_ast
     ; next state = board
+    ; returns void
+    ; 
     push rbx
-    pxor xmm0, xmm0                     ; v_nextast
-    xor rbx, rbx                        ; r_next
+    pxor xmm0, xmm0                                 ; v_nextast
+    xor rbx, rbx                                    ; r_next
     mov rdi, board
     call choose_action
     cmp rax, -1
     je learn_val_final
     mov rdi, bot_ast
-    mov rsi, rax                        ; move dir
-    call sim_move                       ; bot_ast = nextast, luckily im not stupy; src = board = next state which is what it should be
+    mov rsi, rax                                    ; move dir
+    call sim_move                                   ; bot_ast = nextast, luckily im not stupy; src = board = next state which is what it should be
     mov rbx, rax
-    mov rdi, bot_ast                    ; get v(next ast)
+    mov rdi, bot_ast                                ; get v(next ast)
     xor rsi, rsi
     pxor xmm0, xmm0
     call v_ofstate
@@ -771,11 +830,11 @@ learn:
         call v_ofstate
         movsd xmm1, qword [rsp]
         subsd xmm1, xmm0
-        mov qword [rsp], rbx            ; int->float
+        mov qword [rsp], rbx                        ; int->float
         fild qword [rsp]
         fstp qword [rsp]
         addsd xmm1, qword [rsp]
-        movsd xmm0, xmm1                ; final delta
+        movsd xmm0, xmm1                            ; final delta
         add rsp, 16
         mov rdi, gam_ast
         mov rsi, 1
@@ -784,7 +843,11 @@ learn:
     ret
 
 can_place:
+    ; 
+    ; determines whether or not it is possible to add another tile
     ; rdi = state
+    ; returns bool
+    ; 
     xor rcx, rcx
     mov rax, 1
     can_place_iter:
@@ -799,6 +862,10 @@ can_place:
         ret
 
 rand_tile:
+    ; 
+    ; generates random tile with dist 90% 2, 10% 4
+    ; returns 2 or 4
+    ; 
     sub rsp, 8
     call rand
     add rsp, 8
@@ -813,30 +880,33 @@ rand_tile:
         ret
 
 make_tile:
+    ; 
+    ; makes a new tile on a board ct times
     ; rdi = state, rsi = ct
     ; return void
+    ; 
     push rbx
-    push r12                            ; stack maln need -8 more
-    mov rbx, rdi                        ; rbx = rdi, r12 = rsi
+    push r12                                        ; stack maln need -8 more
+    mov rbx, rdi                                    ; rbx = rdi, r12 = rsi
     mov r12, rsi
     make_tile_iter:
         mov rdi, rbx
         call can_place
         test rax, rax
-        jz make_tile_done               ; can't place any more
+        jz make_tile_done                           ; can't place any more
         sub rsp, 8
         make_tile_find:
             call rand
             mov rcx, 16
             xor rdx, rdx
-            div rcx                     ; rdx = rax%rcx
+            div rcx                                 ; rdx = rax%rcx
             mov ecx, dword [rbx+(rdx*4)]
             test ecx, ecx
-            jnz make_tile_find          ; val exists
-        mov qword [rsp], rdx            ; rdx = index = rand%16
+            jnz make_tile_find                      ; val exists
+        mov qword [rsp], rdx                        ; rdx = index = rand%16
         call rand_tile
         mov rdx, qword [rsp]
-        mov dword [rbx+(rdx*4)], eax    ; set val in board
+        mov dword [rbx+(rdx*4)], eax                ; set val in board
         add rsp, 8
         dec r12
         test r12, r12
@@ -847,16 +917,18 @@ make_tile:
         ret
 
 run_game:
+    ; 
     ; runs an instance of game
     ; rdi = train?
-    ; return score | 0x80... if win, since score cant get up to 2b
+    ; return score | 0x80... if win, since score cant get up to 2bil
+    ; 
     push rbx
     push r12
     push r13
-    mov rbx, rdi                        ; train?
-    mov r12, 1                          ; is running
-    xor r13, r13                        ; score
-    mov rdi, board                      ; init board
+    mov rbx, rdi                                    ; train?
+    mov r12, 1                                      ; is running
+    xor r13, r13                                    ; score
+    mov rdi, board                                  ; init board
     call zero_board
     mov rdi, board
     mov rsi, 2
@@ -870,7 +942,7 @@ run_game:
         mov rsi, rax
         call sim_move
         add r13, rax
-        mov rdi, gam_ast                ; set nextstate/ast
+        mov rdi, gam_ast                            ; set nextstate/ast
         mov rsi, board
         call copy_board
         mov rdi, board
@@ -883,8 +955,8 @@ run_game:
         test r12, r12
         jnz run_game_running
     run_game_stop:
-        ; mov rdi, board
-        ; call print_board
+        ; mov rdi, board                            ; print terminal state of game
+        ; call print_board                          ; disabled for performance, enabled during debug
         xor rax, rax
         xor rcx, rcx
         xor rdx, rdx
@@ -901,7 +973,7 @@ run_game:
         jl run_game_no_mask
         or r13, MASK_ON
         run_game_no_mask:
-            mov rax, r13                    ; return score
+            mov rax, r13                            ; return score | mask (or no mask if lose)
         pop r13
         pop r12
         pop rbx
